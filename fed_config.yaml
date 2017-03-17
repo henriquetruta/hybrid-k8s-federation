@@ -1,0 +1,66 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: REDACTED
+    server: https://35.185.41.209
+  name: federation
+- cluster:
+    certificate-authority-data: REDACTED
+    server: https://104.199.189.196
+  name: gke_kubetesting-158018_asia-east1-a_gce-asia-east1-a
+- cluster:
+    certificate-authority-data: REDACTED
+    server: https://35.187.78.15
+  name: gke_kubetesting-158018_europe-west1-b_gce-europe-west1-b
+- cluster:
+    certificate-authority-data: REDACTED
+    server: https://35.185.6.114
+  name: gke_kubetesting-158018_us-east1-b_gce-us-east1-b
+contexts:
+- context:
+    cluster: federation
+    user: federation
+  name: federation
+- context:
+    cluster: gke_kubetesting-158018_asia-east1-a_gce-asia-east1-a
+    user: gke_kubetesting-158018_asia-east1-a_gce-asia-east1-a
+  name: gke_kubetesting-158018_asia-east1-a_gce-asia-east1-a
+- context:
+    cluster: gke_kubetesting-158018_europe-west1-b_gce-europe-west1-b
+    user: gke_kubetesting-158018_europe-west1-b_gce-europe-west1-b
+  name: gke_kubetesting-158018_europe-west1-b_gce-europe-west1-b
+- context:
+    cluster: gke_kubetesting-158018_us-east1-b_gce-us-east1-b
+    user: gke_kubetesting-158018_us-east1-b_gce-us-east1-b
+  name: gke_kubetesting-158018_us-east1-b_gce-us-east1-b
+current-context: gke_kubetesting-158018_asia-east1-a_gce-asia-east1-a
+kind: Config
+preferences: {}
+users:
+- name: federation
+  user:
+    client-certificate-data: REDACTED
+    client-key-data: REDACTED
+    username: admin
+- name: gke_kubetesting-158018_asia-east1-a_gce-asia-east1-a
+  user:
+    auth-provider:
+      config:
+        access-token: ya29.EloMBJ_3PNEJiTS2XOIMe7lziK0qSMxZYhyPSpF24M8ehtDa9pIicJWI54c_-jOgmjqPtCLzOkHfKkQgx0w2JDvb5qptJymntaL_1IahOStf0kZVPO2SpF4ijso
+        expiry: 2017-03-13T16:03:31.533018178-03:00
+      name: gcp
+- name: gke_kubetesting-158018_europe-west1-b_gce-europe-west1-b
+  user:
+    auth-provider:
+      config:
+        access-token: ya29.EloJBBn2_tDflbcek77ZdNoeuuKHfU7wu9kw3FvnIQKcQAI4PKIuieFIQeiuIwzZnFwpdf3-i4w8PqyBWYoIP4C01uEbhrS4Pjd2wi-xlwkX8BK0kqBt0WAnKoE
+        expiry: 2017-03-09T17:26:00.231203424-03:00
+      name: gcp
+- name: gke_kubetesting-158018_us-east1-b_gce-us-east1-b
+  user:
+    auth-provider:
+      config:
+        access-token: ya29.EloJBGvxqg_lYhXIMHeCqDSdowX-OaiaWU5pl31HZfobq3hTjBdaykjBjWlP4iV56yoCUaW6CPc-b3kkELJ935skXh9oqPbYRLsfeg1G_HEe1sD3stPQILK2o_o
+        expiry: 2017-03-09T17:25:27.058959319-03:00
+      name: gcp
+

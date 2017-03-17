@@ -1,0 +1,10 @@
+apiVersion: federation/v1beta1
+kind: Cluster
+metadata:
+  name: local1
+spec:
+  serverAddressByClientCIDRs:
+  - clientCIDR: "0.0.0.0/0"
+    serverAddress: "150.165.85.25:8001"
+  secretRef:
+    name: local1
