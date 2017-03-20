@@ -35,13 +35,13 @@ Federation needs to have access to the cluster. To do so, we need to create a se
 * To create the secret, run:
 
 ```bash
-kubectl create secret generic local --context=gke_kubetesting-158018_us-east1-b_gce-us-east1-b --namespace=federation-system --from-file=kubeconfig
+kubectl create secret generic local --context=gke_kubetesting-us-east1-b_gce-us-east1-b --namespace=federation-system --from-file=kubeconfig
 ```
 
 Check if it was created
 
 ```bash
-$ kubectl get secret --context=gke_kubetesting-158018_us-east1-b_gce-us-east1-b --namespace=federation-system
+$ kubectl get secret --context=gke_kubetesting-us-east1-b_gce-us-east1-b --namespace=federation-system
 NAME                                       TYPE                                  DATA      AGE
 ...
 local                                      Opaque                                1         1m
@@ -121,19 +121,117 @@ NAME                   STATUS    AGE
 local                  Ready     42s
 ```
 
-If it's not showing the status as `Ready`, you need to see the `federation-controller-manager-log`. See Debugging section.
+If it's not showing the status as `Ready`, you need to see the `federation-controller-manager` logs. See Debugging section.
 
 
 ### Create ingress configmap in local
 
-save result from kubectl get cm -n  kube-system ingress-uid -o yaml
+Looks like this is a bug from federation, that this property should've been replicated across all new clusters, but it's not, so we need to manually create a ConfigMap that refers to the Ingress used in the federation. To do so, access any context available in the federation and do:
+
+```bash
+kubectl get cm -n  kube-system ingress-uid -o yaml > ingress_uid_cm.yaml
+```
+
+This file should look like the one available in this repo. After you generate it, copy the `ingress_uid_cm.yaml` file and, at your new local cluster, do:
+
+```bash
 kubectl create -f ingress_uid_cm.yaml
+```
 
 ### Label zones and region
 
-kubectl label nodes henrique-k8s-master2 failure-domain.beta.kubernetes.io/zone=br-northeast
-kubectl label nodes henrique-k8s-master2 failure-domain.beta.kubernetes.io/region=br-northeast
+Now, we should label every node on the local cluster to have a proper region and zone name. In my case, I'm just labeling them as `br-northeast`. To do so, execute it for every node in your cluster:
+
+```bash
+kubectl label nodes <node_name> failure-domain.beta.kubernetes.io/zone=<region>
+kubectl label nodes <node_name> failure-domain.beta.kubernetes.io/region=<region>
+```
+
+Get your nodes list by doing `kubectl get nodes` at the local cluster.
+
+### Updating kube-DNS
+
+Once you’ve registered your cluster with the federation, you’ll need to update KubeDNS so that your cluster can route federation service requests. In Kubernetes 1.5 or later, you must pass the --federations flag to kube-dns via the kube-dns config map. In my case, my federation is called `federation` and my domain, I've put in the beginning of Google cloud configuraiton is `kubetest.com`. So, my configmap looks like `dns_configmap.yaml`.
+Copy it to your local cluster and just run:
+
+```bash
+kubectl create -f dns_configmap.yaml
+```
+
+### Setting up the context
+
+The last step is to create a context, where the federation will be able to access the new cluster, as well as you would be able to do it by using the CLI with `--context=local`. To do so, go to the machine you've been running this whole process and run `kubectl config view`. If you see something, it means that you have a file in `~/kube/config` that has the info to access each cluster. You must edit this file and add two attributes: a cluster and a context.
+
+Your file should look like this:
+
+```YAML
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: LS0t---
+    server: https://one_ip
+  name: federation
+- cluster:
+    certificate-authority-data: LS0t---
+    server: https://some_other_ip
+  name: gke_kubetesting-asia-east1-a_gce-asia-east1-a
+...
+contexts:
+- context:
+    cluster: federation
+    user: federation
+  name: federation
+- context:
+    cluster: gke_kubetesting-asia-east1-a_gce-asia-east1-a
+    user: gke_kubetesting-asia-east1-a_gce-asia-east1-a
+  name: gke_kubetesting-asia-east1-a_gce-asia-east1-a
+...
+current-context: gke_kubetesting-us-east1-b_gce-us-east1-b
+kind: Config
+preferences: {}
+users:
+- name: federation
+  user:
+    client-certificate-data: LS0---
+    client-key-data: LS0t--
+    username: admin
+...
+```
+
+#### Cluster
+
+Add this at the `clusters` section, replacing for your public IP:
+
+```YAML
+- cluster:
+    server: http://123.456.789.1:8001
+  name: local
+```
+
+It's important to notice that when using secure connections, the certificate or other auth method would be necessary.
+
+#### Context
+
+Add this at the `contexts` section:
+
+```YAML
+- context:
+    cluster: local
+    user: admin
+  name: local
+```
 
 ## Debugging
 
-TODO
+When some error happens, the best way to see what's going on is to search the `federation-controller-manager` logs. It is run in a pod inside the master node of the cluster that runs the `federation control plane`. In my case, it's on the us-east region.
+
+You can get the pod by doing replacing the context of your control plane:
+`kubectl --context=gke_kubetesting_us-east1-b_gce-us-east1-b get pods -n federation-system`.
+
+Then, run `kubectl --context=gke_kubetesting_us-east1-b_gce-us-east1-b logs federation-controller-manager-<ID> -n federation-system -f`, and the log will be streamed.
+
+## Remarks
+
+Again, this should not be used in a production envorinment, as it disables auth at local clusters. The creation of context is pretty simple too. 
+
+Any thoughts, feel free to submit a PR or email me at henrique@lsd.ufcg.edu.br or talk to htruta at k8s slack.
