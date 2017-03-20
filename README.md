@@ -16,13 +16,113 @@ This tutorial assumes you have:
 
 ## How to setup it
 
+At this point, you should be able to access the federation control plane API by doing commands like:
+`kubectl --context=federation get clusters`
+
+We will need the access to the Federation context to create the resources. This is adapted from the official [documentation](https://kubernetes.io/docs/admin/federation/#registering-kubernetes-clusters-with-federation).
+
+From now on, assume the cluster we'll add is called `local` and its api-server is located at public IP `123.456.789.1` and local IP `10.0.0.1`.
+
 ### Create secret
 
-### Create service
+Federation needs to have access to the cluster. To do so, we need to create a secret that will give access to the server. In the api-server machine, there is a file `/etc/kubernetes/admin.conf` which should do the work. Then:
 
-### Proxy (insecure)
+* Copy it to the a machine that has access to the federation. An example of this file can be found here at this repo.
+* Name it `kubeconfig`
+* Change the private IP address at port 6443 to the public address at 8001, using normal HTTP, e.g. `http://123.456.789.1:8001`
+* Get the context which the federation is running, i.e. the cluster that runs the control plane. In my case, it's the US-east GCE cluster
+* Take a look at the federation namespace. In my case, it's `federation-system`
+* To create the secret, run:
 
-kubectl proxy --address="SERVER PRIVATE IP" --disable-filter
+```bash
+kubectl create secret generic local --context=gke_kubetesting-158018_us-east1-b_gce-us-east1-b --namespace=federation-system --from-file=kubeconfig
+```
+
+Check if it was created
+
+```bash
+$ kubectl get secret --context=gke_kubetesting-158018_us-east1-b_gce-us-east1-b --namespace=federation-system
+NAME                                       TYPE                                  DATA      AGE
+...
+local                                      Opaque                                1         1m
+...
+```
+
+### Proxy your local API
+
+By default, kubernetes API server is not accessible externally. The easier way to do so, is by proxying it. To do so, `ssh` into the machine that runs your local `api-server` and run:
+
+```bash
+$ kubectl proxy --address="10.0.0.1" --disable-filter --port=8002
+Starting to serve on 10.0.0.1:8001
+```
+
+You should see a warning telling you that the request filter was disabled, which is only for development purposes. If you intend to use this as a production environment, you should always enable secure authentication.
+
+At this point, you must be able to simply curl to your `api-server` using the public IP and see something like:
+
+```bash
+$ curl 123.456.789.1:8001
+{
+  "paths": [
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/apps",
+    "/apis/apps/v1beta1",
+    "/apis/authentication.k8s.io",
+    "/apis/authentication.k8s.io/v1beta1",
+    "/apis/authorization.k8s.io",
+    "/apis/authorization.k8s.io/v1beta1",
+    "/apis/autoscaling",
+    "/apis/autoscaling/v1",
+    "/apis/batch",
+    "/apis/batch/v1",
+    "/apis/batch/v2alpha1",
+    "/apis/certificates.k8s.io",
+    "/apis/certificates.k8s.io/v1alpha1",
+    "/apis/extensions",
+    "/apis/extensions/v1beta1",
+    "/apis/policy",
+    "/apis/policy/v1beta1",
+    "/apis/rbac.authorization.k8s.io",
+    "/apis/rbac.authorization.k8s.io/v1alpha1",
+    "/apis/storage.k8s.io",
+    "/apis/storage.k8s.io/v1beta1",
+    "/healthz",
+    "/healthz/poststarthook/bootstrap-controller",
+    "/healthz/poststarthook/extensions/third-party-resources",
+    "/healthz/poststarthook/rbac/bootstrap-roles",
+    "/logs",
+    "/metrics",
+    "/swaggerapi/",
+    "/ui/",
+    "/version"
+  ]
+```
+
+
+### Create cluster
+
+Next step is to create a cluster in the federation, i.e. let the federation know your local cluster exists. To do so, we need to create a `Cluster` resource.
+
+Take a look at the `fed_cluster.yaml` file. All you need to do is:
+
+* Change the `name` attributes to `local` (or whatever name you've chosen)
+* Change the `serverAdress` value to the same you've put on the `kubeconfig` (`123.456.789.1:8001` in our case)
+* Run:
+
+```bash
+kubectl --context=federation create -f fed_cluster.yaml
+# Wait a few seconds and then, see if it was created
+$ kubectl --context=federation get clusters
+NAME                   STATUS    AGE
+...
+local                  Ready     42s
+```
+
+If it's not showing the status as `Ready`, you need to see the `federation-controller-manager-log`. See Debugging section.
+
 
 ### Create ingress configmap in local
 
@@ -34,3 +134,6 @@ kubectl create -f ingress_uid_cm.yaml
 kubectl label nodes henrique-k8s-master2 failure-domain.beta.kubernetes.io/zone=br-northeast
 kubectl label nodes henrique-k8s-master2 failure-domain.beta.kubernetes.io/region=br-northeast
 
+## Debugging
+
+TODO
