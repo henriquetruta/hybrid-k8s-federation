@@ -3,6 +3,8 @@
 Here, we'll setup a Kubernetes federation having the control plane running on a Google Cloud Engine instance and using Google DNS.
 After that, we'll create a local on-prem cluster (in a VM, in my case) and make it join the Federation.
 
+If you don't know the basics of Kubernetes Federation, you can take a look at this official [doc](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/federation.md).
+
 NOTE: We use here an insecure method of accessing the local cluster, and it's just meant for test and dev purposes.
 
 ## What you need to have
@@ -11,7 +13,7 @@ This tutorial assumes you have:
 
 * A running k8s local cluster. If you don't, create one following these steps [here](https://kubernetes.io/docs/getting-started-guides/kubeadm/)
 * Your local API server has a public IP
-* A federation running on Google Cloud Engine. Follow these steps [here](http://blog.kubernetes.io/2016/12/cluster-federation-in-kubernetes-1.5.html). Here, you just need to create the clusters. Running an application is optional
+* A federation running on Google Cloud Engine. Follow these steps [here](http://blog.kubernetes.io/2016/12/cluster-federation-in-kubernetes-1.5.html). You just need to create the clusters. Running an application is optional at this point
 * `kubectl` and `kubefed` properly installed
 
 ## How to setup it
@@ -19,19 +21,19 @@ This tutorial assumes you have:
 At this point, you should be able to access the federation control plane API by doing commands like:
 `kubectl --context=federation get clusters`
 
-We will need the access to the Federation context to create the resources. This is adapted from the official [documentation](https://kubernetes.io/docs/admin/federation/#registering-kubernetes-clusters-with-federation).
+We will need access to this Federation context to create most of the resources. This is adapted from the official [documentation](https://kubernetes.io/docs/admin/federation/#registering-kubernetes-clusters-with-federation).
 
-From now on, assume the cluster we'll add is called `local` and its api-server is located at public IP `123.456.789.1` and local IP `10.0.0.1`.
+From now on, assume the cluster we'll add is going to be called `local` and its api-server is located can be accessed through public IP `123.456.789.1` and local IP `10.0.0.1`.
 
 ### Create secret
 
-Federation needs to have access to the cluster. To do so, we need to create a secret that will give access to the server. In the api-server machine, there is a file `/etc/kubernetes/admin.conf` which should do the work. Then:
+Federation needs to have access to your local cluster. To do so, we need to create a secret that will give access to the api-server. In the api-server machine, there is a file `/etc/kubernetes/admin.conf` which should do the work. Then:
 
-* Copy it to the a machine that has access to the federation. An example of this file can be found here at this repo.
+* Copy it to the a machine that has access to the federation. An example of this file can be found here at this repo
 * Name it `kubeconfig`
 * Change the private IP address at port 6443 to the public address at 8001, using normal HTTP, e.g. `http://123.456.789.1:8001`
 * Get the context which the federation is running, i.e. the cluster that runs the control plane. In my case, it's the US-east GCE cluster
-* Take a look at the federation namespace. In my case, it's `federation-system`
+* Take a look at the federation namespace. In my case, it's `federation-system`, and if you followed the GCE tutorial, yours should be too
 * To create the secret, run:
 
 ```bash
@@ -53,13 +55,13 @@ local                                      Opaque                               
 By default, kubernetes API server is not accessible externally. The easier way to do so, is by proxying it. To do so, `ssh` into the machine that runs your local `api-server` and run:
 
 ```bash
-$ kubectl proxy --address="10.0.0.1" --disable-filter --port=8002
+$ kubectl proxy --address="10.0.0.1" --disable-filter --port=8001 &
 Starting to serve on 10.0.0.1:8001
 ```
 
-You should see a warning telling you that the request filter was disabled, which is only for development purposes. If you intend to use this as a production environment, you should always enable secure authentication.
+You should see a warning telling you that the request filter was disabled, which is only for development purposes. If you intend to use this as a production environment, you must *always* enable secure authentication.
 
-At this point, you must be able to simply curl to your `api-server` using the public IP and see something like:
+At this point, you should be able to simply curl your `api-server` using the public IP and see something like:
 
 ```bash
 $ curl 123.456.789.1:8001
@@ -132,7 +134,7 @@ Looks like this is a bug from federation, that this property should've been repl
 kubectl get cm -n  kube-system ingress-uid -o yaml > ingress_uid_cm.yaml
 ```
 
-This file should look like the one available in this repo. After you generate it, copy the `ingress_uid_cm.yaml` file and, at your new local cluster, do:
+This file should look like the one available in this repo. After you generate it, copy the `ingress_uid_cm.yaml` to your new local cluster and create this resource there:
 
 ```bash
 kubectl create -f ingress_uid_cm.yaml
@@ -151,7 +153,7 @@ Get your nodes list by doing `kubectl get nodes` at the local cluster.
 
 ### Updating kube-DNS
 
-Once you’ve registered your cluster with the federation, you’ll need to update KubeDNS so that your cluster can route federation service requests. In Kubernetes 1.5 or later, you must pass the --federations flag to kube-dns via the kube-dns config map. In my case, my federation is called `federation` and my domain, I've put in the beginning of Google cloud configuraiton is `kubetest.com`. So, my configmap looks like `dns_configmap.yaml`.
+Once you’ve registered your cluster with the federation, you’ll need to update KubeDNS so that your cluster can route federation service requests. In Kubernetes 1.5 or later, you must pass the --federations flag to kube-dns via the kube-dns config map. In my case, my federation is called `federation` and the domain I've put in the beginning of Google cloud configuration is `kubetest.com`. So, my configmap looks like `dns_configmap.yaml`.
 Copy it to your local cluster and just run:
 
 ```bash
@@ -160,7 +162,7 @@ kubectl create -f dns_configmap.yaml
 
 ### Setting up the context
 
-The last step is to create a context, where the federation will be able to access the new cluster, as well as you would be able to do it by using the CLI with `--context=local`. To do so, go to the machine you've been running this whole process and run `kubectl config view`. If you see something, it means that you have a file in `~/kube/config` that has the info to access each cluster. You must edit this file and add two attributes: a cluster and a context.
+The last step is to create a context, from which the federation will be able to access the new cluster, as well as you would be able to do it by using the CLI with `--context=local`. To do so, go to the machine you've been running this whole process and run `kubectl config view`. If you see something, it means that you have a file in `~/kube/config` that has the info to access each cluster. You must edit this file and add two attributes: a cluster and a context.
 
 Your file should look like this:
 
@@ -198,6 +200,8 @@ users:
 ...
 ```
 
+Just do the following:
+
 #### Cluster
 
 Add this at the `clusters` section, replacing for your public IP:
@@ -221,6 +225,8 @@ Add this at the `contexts` section:
   name: local
 ```
 
+NOTE: You can also update this using `kubectl config`.
+
 ## Debugging
 
 When some error happens, the best way to see what's going on is to search the `federation-controller-manager` logs. It is run in a pod inside the master node of the cluster that runs the `federation control plane`. In my case, it's on the us-east region.
@@ -232,6 +238,6 @@ Then, run `kubectl --context=gke_kubetesting_us-east1-b_gce-us-east1-b logs fede
 
 ## Remarks
 
-Again, this should not be used in a production envorinment, as it disables auth at local clusters. The creation of context is pretty simple too. 
+Again, this should not be used in a production envorinment, as it disables auth at local clusters. The creation of context is pretty simple too.
 
 Any thoughts, feel free to submit a PR or email me at henrique@lsd.ufcg.edu.br or talk to htruta at k8s slack.
